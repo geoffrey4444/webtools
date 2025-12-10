@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live LaTeX Preview (MathJax, Copy to Clipboard)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Simple styling, no frameworks -->
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      background-color: #f5f5f5;
+      color: #222;
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin-top: 0;
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #555;
+      margin-bottom: 1.25rem;
+    }
+
+    .layout {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    @media (min-width: 800px) {
+      .layout {
+        flex-direction: row;
+      }
+    }
+
+    .panel {
+      background-color: #ffffff;
+      border-radius: 0.75rem;
+      padding: 1rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    .panel-header span.hint {
+      font-size: 0.8rem;
+      color: #777;
+      font-weight: 400;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      resize: vertical;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      border: 1px solid #ccc;
+      font-family: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    textarea:focus {
+      border-color: #2c6bed;
+      box-shadow: 0 0 0 2px rgba(44, 107, 237, 0.15);
+    }
+
+    .preview-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 260px;
+    }
+
+    .preview-inner {
+      flex: 1;
+      border-radius: 0.5rem;
+      border: 1px solid #e0e0e0;
+      background-color: #fafafa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      overflow: auto;
+    }
+
+    #math-preview svg {
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      align-items: center;
+    }
+
+    button {
+      border-radius: 999px;
+      border: 1px solid #2c6bed;
+      background-color: #2c6bed;
+      color: #ffffff;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: background-color 0.1s ease, box-shadow 0.1s ease,
+          transform 0.05s ease;
+    }
+
+    button:hover {
+      background-color: #2254b6;
+      box-shadow: 0 2px 6px rgba(34, 84, 182, 0.3);
+    }
+
+    button:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .status-text {
+      font-size: 0.8rem;
+      color: #666;
+    }
+
+    .status-text.error {
+      color: #b00020;
+    }
+
+    .status-text.success {
+      color: #2e7d32;
+    }
+
+    .footer-hint {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: #777;
+    }
+
+    code {
+      font-family: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+      font-size: 0.9em;
+      background-color: #eee;
+      padding: 0.1rem 0.3rem;
+      border-radius: 0.25rem;
+    }
+  </style>
+
+  <!-- MathJax v3, SVG output, from CDN -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [["$", "$"], ["\\(", "\\)"]],
+        displayMath: [["$$", "$$"], ["\\[", "\\]"]]
+      },
+      svg: {
+        fontCache: "global"
+      }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js"
+      id="mathjax-script" async></script>
+</head>
+<body>
+  <div class="app">
+    <h1>Live LaTeX Preview</h1>
+    <div class="subtitle">
+      Type LaTeX on the left, see a rendered SVG equation on the right.
+      Use the button to copy the SVG to your clipboard.
+    </div>
+
+    <div class="layout">
+      <!-- Input panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>LaTeX Input</span>
+          <span class="hint">Inline: <code>$...$</code>&nbsp;&nbsp;Display: <code>$$...$$</code></span>
+        </div>
+        <textarea id="latex-input" spellcheck="false"></textarea>
+      </div>
+
+      <!-- Preview panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>Preview</span>
+          <span id="render-status" class="status-text">Waiting for MathJax to load…</span>
+        </div>
+        <div class="preview-container">
+          <div id="math-preview" class="preview-inner">
+            <!-- Rendered SVG will go here -->
+            <span style="color:#999; font-size:0.9rem;">
+              Type some LaTeX on the left to see it rendered here.
+            </span>
+          </div>
+
+          <div class="controls">
+            <span id="copy-status" class="status-text"></span>
+            <button id="copy-svg-button" disabled>
+              <!-- simple "icon" -->
+              <span>📋</span>
+              <span>Copy as SVG</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-hint">
+      This page uses MathJax via CDN and the Clipboard API. Copying SVG
+      works in most modern browsers; if it fails, you can still right-click
+      the equation and save it as an image or copy the LaTeX source.
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+
+    /**
+     * Simple debounce helper.
+     * @param {function(): void} func
+     * @param {number} delayMs
+     * @return {function(): void}
+     */
+    function debounce(func, delayMs) {
+      let timerId = null;
+      return function debounced() {
+        if (timerId !== null) {
+          clearTimeout(timerId);
+        }
+        const args = arguments;
+        timerId = setTimeout(function() {
+          func.apply(null, args);
+        }, delayMs);
+      };
+    }
+
+    /**
+     * State and element references.
+     */
+    const latexInputEl = document.getElementById("latex-input");
+    const previewEl = document.getElementById("math-preview");
+    const renderStatusEl = document.getElementById("render-status");
+    const copyStatusEl = document.getElementById("copy-status");
+    const copyButtonEl = document.getElementById("copy-svg-button");
+
+    let mathJaxReady = false;
+
+    /**
+     * Once MathJax is ready, enable live rendering.
+     */
+    function handleMathJaxReady() {
+      mathJaxReady = true;
+      renderStatusEl.textContent = "Ready.";
+      renderStatusEl.classList.remove("error");
+      renderStatusEl.classList.remove("success");
+
+      copyButtonEl.disabled = false;
+
+      // Optionally preload some example LaTeX.
+      if (!latexInputEl.value) {
+        latexInputEl.value =
+            "\\int_{-\\infty}^{\\infty} e^{-x^2} \\, dx = \\sqrt{\\pi}";
+      }
+
+      // Trigger initial render.
+      updatePreviewDebounced();
+    }
+
+    /**
+     * Render LaTeX from the input into the preview using MathJax.tex2svgPromise.
+     */
+    function updatePreview() {
+      if (!mathJaxReady || !window.MathJax || !window.MathJax.tex2svgPromise) {
+        renderStatusEl.textContent = "MathJax still loading…";
+        renderStatusEl.classList.remove("error");
+        renderStatusEl.classList.remove("success");
+        return;
+      }
+
+      const latex = latexInputEl.value.trim();
+      if (!latex) {
+        previewEl.innerHTML =
+            '<span style="color:#999; font-size:0.9rem;">' +
+            "Type some LaTeX on the left to see it rendered here." +
+            "</span>";
+        renderStatusEl.textContent = "Idle.";
+        renderStatusEl.classList.remove("error");
+        renderStatusEl.classList.remove("success");
+        return;
+      }
+
+      renderStatusEl.textContent = "Rendering…";
+      renderStatusEl.classList.remove("error");
+      renderStatusEl.classList.remove("success");
+
+      // Display-style by default; if you want inline, you could add a toggle.
+      window.MathJax.tex2svgPromise(latex, {display: true})
+          .then(function(node) {
+            previewEl.innerHTML = "";
+            // MathJax.tex2svgPromise returns an <svg> wrapped in a <span>.
+            const svg = node.querySelector("svg");
+            if (!svg) {
+              previewEl.textContent =
+                  "Rendered node did not contain an SVG element.";
+              renderStatusEl.textContent = "Render error.";
+              renderStatusEl.classList.add("error");
+              return;
+            }
+
+            // Clone so we are not manipulating MathJax’s internal node.
+            const clonedSvg = svg.cloneNode(true);
+            previewEl.appendChild(clonedSvg);
+
+            renderStatusEl.textContent = "Rendered.";
+            renderStatusEl.classList.remove("error");
+            renderStatusEl.classList.add("success");
+          })
+          .catch(function(err) {
+            previewEl.textContent = "Error rendering LaTeX.";
+            renderStatusEl.textContent = "Render error.";
+            renderStatusEl.classList.add("error");
+            console.error("MathJax render error:", err);
+          });
+    }
+
+    const updatePreviewDebounced = debounce(updatePreview, 200);
+
+    /**
+     * Copy the rendered SVG to the clipboard, if possible.
+     */
+    async function copySvgToClipboard() {
+      copyStatusEl.textContent = "";
+      copyStatusEl.classList.remove("error", "success");
+
+      if (!navigator.clipboard || typeof ClipboardItem === "undefined") {
+        copyStatusEl.textContent =
+            "Clipboard image copy not supported in this browser.";
+        copyStatusEl.classList.add("error");
+        return;
+      }
+
+      const svg = previewEl.querySelector("svg");
+      if (!svg) {
+        copyStatusEl.textContent = "Nothing to copy yet.";
+        copyStatusEl.classList.add("error");
+        return;
+      }
+
+      try {
+        // Serialize SVG to a string.
+        const serializer = new XMLSerializer();
+        const svgString = serializer.serializeToString(svg);
+
+        const blob = new Blob([svgString], {type: "image/svg+xml"});
+        const data = [new ClipboardItem({"image/svg+xml": blob})];
+        await navigator.clipboard.write(data);
+
+        copyStatusEl.textContent = "SVG copied to clipboard.";
+        copyStatusEl.classList.add("success");
+      } catch (err) {
+        console.error("Clipboard copy error:", err);
+        copyStatusEl.textContent =
+            "Failed to copy SVG. You can right-click the equation and save it.";
+        copyStatusEl.classList.add("error");
+      }
+    }
+
+    /**
+     * Set up event listeners and wait for MathJax to be ready.
+     */
+    function init() {
+      latexInputEl.addEventListener("input", updatePreviewDebounced);
+      copyButtonEl.addEventListener("click", function() {
+        void copySvgToClipboard();
+      });
+
+      // MathJax v3 exposes a startup.promise you can wait on.
+      // It becomes available once the script is loaded.
+      const checkMathJaxInterval = setInterval(function() {
+        if (window.MathJax && window.MathJax.startup &&
+            window.MathJax.startup.promise) {
+          clearInterval(checkMathJaxInterval);
+          window.MathJax.startup.promise.then(function() {
+            handleMathJaxReady();
+          }).catch(function(err) {
+            console.error("MathJax startup error:", err);
+            renderStatusEl.textContent = "MathJax failed to load.";
+            renderStatusEl.classList.add("error");
+          });
+        }
+      }, 100);
+    }
+
+    // Initialize when DOM is ready.
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
