@@ -233,7 +233,7 @@
     <form id="pi-form">
       <div>
         <label for="points">Random points</label>
-        <input id="points" type="number" inputmode="numeric" min="100" max="5000000" step="100" value="50000" required />
+        <input id="points" type="number" inputmode="numeric" min="100" step="100" value="50000" required />
       </div>
       <button id="run" type="submit">Run simulation</button>
     </form>
@@ -297,9 +297,9 @@
     }
 
     function clampPoints(value) {
-      const min = Number(pointsInput.min);
-      const max = Number(pointsInput.max);
-      return Math.min(Math.max(value, min), max);
+      const min = Number(pointsInput.min) || 0;
+      if (!Number.isFinite(value)) return min;
+      return Math.max(value, min);
     }
 
     function drawSample(points, sampleInside) {
