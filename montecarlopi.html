@@ -223,6 +223,35 @@
       color: var(--muted);
       margin-top: 6px;
     }
+
+    .progress {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .progress[hidden] {
+      display: none;
+    }
+
+    .progress-track {
+      position: relative;
+      flex: 1;
+      height: 10px;
+      border-radius: 999px;
+      background: color-mix(in oklab, var(--panel), var(--bg) 30%);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .progress-bar {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), color-mix(in oklab, var(--accent), var(--positive)));
+      transition: width 0.12s ease-out;
+    }
   </style>
 </head>
 <body>
@@ -268,6 +297,12 @@
           </div>
         </div>
         <div class="status" id="status">Awaiting input…</div>
+        <div class="progress" id="progress" hidden>
+          <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+          <span id="progress-label" class="result-label">0%</span>
+        </div>
       </section>
 
       <section class="card">
@@ -288,12 +323,33 @@
     const insideEl = document.getElementById('inside');
     const runtimeEl = document.getElementById('runtime');
     const chips = document.querySelectorAll('.chip');
+    const progressEl = document.getElementById('progress');
+    const progressBarEl = document.getElementById('progress-bar');
+    const progressLabelEl = document.getElementById('progress-label');
 
     const canvas = document.getElementById('plot');
     const ctx = canvas.getContext('2d');
 
+    const ASYNC_THRESHOLD = 10_000_000;
+    const ASYNC_BATCH = 250_000;
+
     function formatNumber(n) {
       return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+    }
+
+    function setProgress(percent) {
+      const pct = Math.min(100, Math.max(0, percent * 100));
+      progressEl.hidden = false;
+      progressBarEl.style.width = `${pct}%`;
+      progressBarEl.parentElement?.setAttribute('aria-valuenow', pct.toFixed(1));
+      progressLabelEl.textContent = `${pct.toFixed(1)}%`;
+    }
+
+    function resetProgress() {
+      progressEl.hidden = true;
+      progressBarEl.style.width = '0%';
+      progressBarEl.parentElement?.setAttribute('aria-valuenow', '0');
+      progressLabelEl.textContent = '0%';
     }
 
     function clampPoints(value) {
@@ -366,6 +422,37 @@
       return { inside, piEstimate, elapsed, sample, sampleInside };
     }
 
+    async function simulateAsync(pointsCount, onProgress) {
+      const start = performance.now();
+      let inside = 0;
+      const sample = [];
+      const sampleLimit = 4000;
+      let sampleInside = 0;
+      let processed = 0;
+
+      while (processed < pointsCount) {
+        const batchEnd = Math.min(processed + ASYNC_BATCH, pointsCount);
+        for (let i = processed; i < batchEnd; i++) {
+          const x = Math.random();
+          const y = Math.random();
+          const isInside = x * x + y * y <= 1;
+          if (isInside) inside++;
+          if (i < sampleLimit) {
+            sample.push({ x, y, inside: isInside });
+            if (isInside) sampleInside++;
+          }
+        }
+
+        processed = batchEnd;
+        if (onProgress) onProgress(processed / pointsCount);
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+
+      const elapsed = performance.now() - start;
+      const piEstimate = (inside / pointsCount) * 4;
+      return { inside, piEstimate, elapsed, sample, sampleInside };
+    }
+
     function updateResults({ inside, piEstimate, elapsed, total }) {
       piEl.textContent = formatNumber(piEstimate);
       errorEl.textContent = formatNumber(Math.abs(piEstimate - Math.PI));
@@ -380,7 +467,7 @@
       });
     });
 
-    form.addEventListener('submit', event => {
+    form.addEventListener('submit', async event => {
       event.preventDefault();
       const desired = clampPoints(Number(pointsInput.value) || 0);
       pointsInput.value = desired;
@@ -390,15 +477,25 @@
       }
 
       runBtn.disabled = true;
-      statusEl.textContent = 'Running simulation…';
+      resetProgress();
 
-      requestAnimationFrame(() => {
-        const { inside, piEstimate, elapsed, sample, sampleInside } = simulate(desired);
-        updateResults({ inside, piEstimate, elapsed, total: desired });
-        drawSample(sample, sampleInside);
-        statusEl.textContent = 'Simulation complete';
-        runBtn.disabled = false;
-      });
+      const useAsync = desired > ASYNC_THRESHOLD;
+      statusEl.textContent = useAsync ? 'Running simulation asynchronously…' : 'Running simulation…';
+
+      const onProgress = progress => {
+        setProgress(progress);
+        statusEl.textContent = `Running simulation… ${Math.round(progress * 100)}%`;
+      };
+
+      const runner = useAsync ? simulateAsync(desired, onProgress) : Promise.resolve(simulate(desired));
+
+      const { inside, piEstimate, elapsed, sample, sampleInside } = await runner;
+      if (useAsync) setProgress(1);
+      updateResults({ inside, piEstimate, elapsed, total: desired });
+      drawSample(sample, sampleInside);
+      statusEl.textContent = 'Simulation complete';
+      if (!useAsync) resetProgress();
+      runBtn.disabled = false;
     });
 
     drawSample([], null);
