@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Floating-Point Error Microscope</title>
+  <style>
+    :root{
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #555;
+      --card: #f3f4f6;
+      --border: #d1d5db;
+      --accent: #2563eb;
+      --bad: #b91c1c;
+      --ok: #065f46;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg: #0b0f14;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --card: #111827;
+        --border: #243244;
+        --accent: #60a5fa;
+        --bad: #f87171;
+        --ok: #34d399;
+      }
+    }
+
+    body{
+      margin:0;
+      padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--sans);
+    }
+    h1{
+      font-size: 18px;
+      margin: 0 0 10px 0;
+      letter-spacing: 0.2px;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    @media (min-width: 900px){
+      .grid{ grid-template-columns: 1.1fr 0.9fr; }
+    }
+    .card{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    label{
+      display:block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 10px 0 6px 0;
+    }
+    input, select, textarea, button{
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 14px;
+      padding: 10px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--fg);
+      outline: none;
+    }
+    textarea{ font-family: var(--mono); min-height: 86px; resize: vertical; }
+    input[type="text"], input[type="number"]{ font-family: var(--mono); }
+    .row{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    @media (min-width: 600px){
+      .row{ grid-template-columns: 1fr 1fr; }
+    }
+    .smallrow{
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    .hint{
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+      margin-top: 8px;
+    }
+    .pill{
+      display:inline-block;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      margin-right: 6px;
+      margin-bottom: 6px;
+      user-select: none;
+    }
+    .pill.ok{ color: var(--ok); border-color: color-mix(in oklab, var(--ok), var(--border)); }
+    .pill.bad{ color: var(--bad); border-color: color-mix(in oklab, var(--bad), var(--border)); }
+    pre{
+      margin: 0;
+      padding: 10px;
+      background: color-mix(in oklab, var(--card), var(--bg) 30%);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow:auto;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .kvs{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .kv{
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: color-mix(in oklab, var(--card), var(--bg) 15%);
+    }
+    .kv .k{ font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .kv .v{ font-family: var(--mono); font-size: 13px; overflow-wrap:anywhere; }
+    .btnrow{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    button{
+      width: auto;
+      padding: 10px 12px;
+      cursor: pointer;
+      border-color: color-mix(in oklab, var(--accent), var(--border));
+    }
+    button.primary{
+      background: color-mix(in oklab, var(--accent), transparent 85%);
+      border-color: color-mix(in oklab, var(--accent), var(--border));
+    }
+    .footer{
+      max-width: 980px;
+      margin: 14px auto 0 auto;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    a{ color: var(--accent); text-decoration: none; }
+    a:hover{ text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="card">
+      <h1>Floating-Point Error Microscope (IEEE-754 double)</h1>
+
+      <label for="preset">Preset</label>
+      <select id="preset"></select>
+
+      <div class="row">
+        <div>
+          <label for="xval">x</label>
+          <input id="xval" type="text" inputmode="decimal" value="1e-8" />
+        </div>
+        <div>
+          <label for="mode">Reference</label>
+          <select id="mode">
+            <option value="auto" selected>Auto (stable if available, else series)</option>
+            <option value="stable">Stable expression</option>
+            <option value="series">Series (when available)</option>
+            <option value="naive">Naive (for debugging)</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="expr">Naive expression (use x; Math functions allowed)</label>
+      <textarea id="expr" spellcheck="false"></textarea>
+
+      <label for="stable">Stable expression (optional)</label>
+      <textarea id="stable" spellcheck="false" placeholder="(optional)"></textarea>
+
+      <label for="series">Series (optional; in powers of x)</label>
+      <textarea id="series" spellcheck="false" placeholder="Example: 0.5 - x^2/24 + x^4/720"></textarea>
+
+      <div class="btnrow">
+        <button id="btnSmall" class="primary">Try x = 1e-16</button>
+        <button id="btnMed">Try x = 1e-8</button>
+        <button id="btnBig">Try x = 1e-2</button>
+      </div>
+
+      <div class="hint">
+        Allowed identifiers: <span class="pill">x</span><span class="pill">pi</span><span class="pill">e</span>
+        and common Math functions like <span class="pill">sin</span><span class="pill">cos</span><span class="pill">tan</span>
+        <span class="pill">exp</span><span class="pill">log</span><span class="pill">sqrt</span><span class="pill">abs</span>
+        <span class="pill">pow</span><span class="pill">expm1</span><span class="pill">log1p</span>.
+        (Expressions are evaluated locally in your browser.)
+      </div>
+    </div>
+
+    <div class="card">
+      <h1>Results</h1>
+      <div id="flags"></div>
+
+      <div class="kvs" style="margin-top:10px;">
+        <div class="kv">
+          <div class="k">Naive</div>
+          <div class="v" id="outNaive">—</div>
+        </div>
+        <div class="kv">
+          <div class="k">Stable</div>
+          <div class="v" id="outStable">—</div>
+        </div>
+        <div class="kv">
+          <div class="k">Series</div>
+          <div class="v" id="outSeries">—</div>
+        </div>
+        <div class="kv">
+          <div class="k">Reference (used for error)</div>
+          <div class="v" id="outRef">—</div>
+        </div>
+      </div>
+
+      <label>Error vs reference</label>
+      <pre id="errBox">—</pre>
+
+      <label>Bit patterns (hex)</label>
+      <pre id="bitsBox">—</pre>
+    </div>
+  </div>
+
+  <div class="footer">
+    Single-file page. No libraries. Designed for iOS dark mode via <code>prefers-color-scheme</code>.
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  const presets = [
+    {
+      name: "(1 - cos(x)) / x^2  (cancellation)",
+      x: "1e-8",
+      expr: "(1 - cos(x)) / (x*x)",
+      stable: "2 * pow(sin(x/2), 2) / (x*x)",
+      series: "0.5 - (x^2)/24 + (x^4)/720 - (x^6)/40320"
+    },
+    {
+      name: "sin(x) / x  (sinc)",
+      x: "1e-8",
+      expr: "sin(x) / x",
+      stable: "sin(x) / x", // stable is basically series for tiny x; keep for comparison
+      series: "1 - (x^2)/6 + (x^4)/120 - (x^6)/5040 + (x^8)/362880"
+    },
+    {
+      name: "(exp(x) - 1) / x  (use expm1)",
+      x: "1e-10",
+      expr: "(exp(x) - 1) / x",
+      stable: "expm1(x) / x",
+      series: "1 + x/2 + (x^2)/6 + (x^3)/24 + (x^4)/120 + (x^5)/720"
+    },
+    {
+      name: "log(1 + x) / x  (use log1p)",
+      x: "1e-10",
+      expr: "log(1 + x) / x",
+      stable: "log1p(x) / x",
+      series: "1 - x/2 + (x^2)/3 - (x^3)/4 + (x^4)/5 - (x^5)/6"
+    },
+    {
+      name: "(sqrt(1 + x) - 1) / x  (rationalize)",
+      x: "1e-10",
+      expr: "(sqrt(1 + x) - 1) / x",
+      stable: "1 / (sqrt(1 + x) + 1)",
+      series: "0.5 - x/8 + (x^2)/16 - (5*x^3)/128 + (7*x^4)/256"
+    },
+  ];
+
+  const $ = (id) => document.getElementById(id);
+
+  const presetSel = $("preset");
+  const xval = $("xval");
+  const modeSel = $("mode");
+  const exprTA = $("expr");
+  const stableTA = $("stable");
+  const seriesTA = $("series");
+
+  const outNaive = $("outNaive");
+  const outStable = $("outStable");
+  const outSeries = $("outSeries");
+  const outRef = $("outRef");
+  const errBox = $("errBox");
+  const bitsBox = $("bitsBox");
+  const flags = $("flags");
+
+  // Populate presets
+  presets.forEach((p, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = p.name;
+    presetSel.appendChild(opt);
+  });
+
+  function setPreset(i){
+    const p = presets[i];
+    xval.value = p.x;
+    exprTA.value = p.expr;
+    stableTA.value = p.stable || "";
+    seriesTA.value = p.series || "";
+    recompute();
+  }
+
+  // --- Expression evaluation (restricted) ---
+  const allowedIdents = new Set([
+    "x","pi","e",
+    // functions (mapped to Math.*)
+    "sin","cos","tan","asin","acos","atan","atan2",
+    "sinh","cosh","tanh",
+    "exp","log","sqrt","abs","floor","ceil","round","trunc",
+    "min","max","pow",
+    "expm1","log1p"
+  ]);
+
+  function normalizeExpr(s){
+    // allow ^ as exponent (convert to pow)
+    // but only for simple forms a^b or (..)^b etc: implement by rewriting tokens conservatively
+    // We'll do a small parse for ^ by splitting; if it fails, user can write pow(a,b).
+    return s;
+  }
+
+  function validateExpr(s){
+    // Reject anything with suspicious characters
+    // Allow: letters, digits, whitespace, . , + - * / % ( ) ^ and underscores
+    if (!/^[0-9a-zA-Z_\s+\-*/%().,^]*$/.test(s)) {
+      return { ok:false, why:"Expression contains disallowed characters." };
+    }
+    // Disallow consecutive dots that might enable weird tokens? (very conservative)
+    if (s.includes("..")) return { ok:false, why:"Expression contains '..' which is not allowed." };
+
+    // Collect identifiers and ensure they are allowed.
+    const ids = s.match(/[A-Za-z_]\w*/g) || [];
+    for (const id of ids){
+      if (!allowedIdents.has(id)) {
+        return { ok:false, why:`Identifier '${id}' is not allowed.` };
+      }
+    }
+    return { ok:true, why:"" };
+  }
+
+  function compileExpr(s){
+    const v = validateExpr(s);
+    if (!v.ok) throw new Error(v.why);
+
+    // Replace identifiers with Math.* equivalents (except x, pi, e).
+    // Use word boundaries.
+    let body = s;
+
+    // Replace constants
+    body = body.replace(/\bpi\b/g, "Math.PI");
+    body = body.replace(/\be\b/g, "Math.E");
+
+    const fnNames = [
+      "sin","cos","tan","asin","acos","atan","atan2",
+      "sinh","cosh","tanh",
+      "exp","log","sqrt","abs","floor","ceil","round","trunc",
+      "min","max","pow",
+      "expm1","log1p"
+    ];
+    for (const name of fnNames){
+      const re = new RegExp(`\\b${name}\\b`, "g");
+      body = body.replace(re, `Math.${name}`);
+    }
+
+    // Optional: support ^ by translating a^b to Math.pow(a,b) using a simple loop.
+    body = rewriteCarets(body);
+
+    // eslint-disable-next-line no-new-func
+    return new Function("x", `return (${body});`);
+  }
+
+  function rewriteCarets(s){
+    // Minimal caret rewriting:
+    // repeatedly replace "A ^ B" where A and B are "atom-like" substrings:
+    // atom := number | x | Math.<ident> | ( ... )
+    // This is not a full parser; it's intended for convenience, not completeness.
+    let out = s;
+    let guard = 0;
+
+    while (out.includes("^")) {
+      if (++guard > 200) break;
+
+      // find first caret
+      const idx = out.indexOf("^");
+      if (idx < 0) break;
+
+      const left = extractAtomLeft(out, idx - 1);
+      const right = extractAtomRight(out, idx + 1);
+
+      if (!left || !right) break;
+
+      const before = out.slice(0, left.start);
+      const after = out.slice(right.end);
+      out = `${before}Math.pow(${left.text},${right.text})${after}`;
+    }
+    return out;
+  }
+
+  function extractAtomLeft(s, i){
+    // skip spaces
+    while (i >= 0 && /\s/.test(s[i])) i--;
+    if (i < 0) return null;
+
+    // parenthesized
+    if (s[i] === ")"){
+      let depth = 1;
+      let j = i - 1;
+      while (j >= 0){
+        if (s[j] === ")") depth++;
+        else if (s[j] === "(") {
+          depth--;
+          if (depth === 0) break;
+        }
+        j--;
+      }
+      if (depth !== 0) return null;
+      return { start: j, end: i + 1, text: s.slice(j, i + 1) };
+    }
+
+    // identifier / property chain (e.g., Math.PI or x)
+    if (/[A-Za-z0-9_.]/.test(s[i])){
+      let j = i;
+      while (j >= 0 && /[A-Za-z0-9_.]/.test(s[j])) j--;
+      j++;
+      return { start: j, end: i + 1, text: s.slice(j, i + 1) };
+    }
+
+    return null;
+  }
+
+  function extractAtomRight(s, i){
+    // skip spaces
+    while (i < s.length && /\s/.test(s[i])) i++;
+    if (i >= s.length) return null;
+
+    // parenthesized
+    if (s[i] === "("){
+      let depth = 1;
+      let j = i + 1;
+      while (j < s.length){
+        if (s[j] === "(") depth++;
+        else if (s[j] === ")") {
+          depth--;
+          if (depth === 0) break;
+        }
+        j++;
+      }
+      if (depth !== 0) return null;
+      return { start: i, end: j + 1, text: s.slice(i, j + 1) };
+    }
+
+    // identifier / number / Math.*
+    if (/[A-Za-z0-9_.]/.test(s[i])){
+      let j = i;
+      while (j < s.length && /[A-Za-z0-9_.]/.test(s[j])) j++;
+      return { start: i, end: j, text: s.slice(i, j) };
+    }
+    return null;
+  }
+
+  function safeNumberFromText(t){
+    const s = String(t).trim();
+    if (s === "") return NaN;
+    // allow "pi" and "e" shorthand
+    if (s === "pi") return Math.PI;
+    if (s === "e") return Math.E;
+    return Number(s);
+  }
+
+  // --- ULP / bits ---
+  const dv = new DataView(new ArrayBuffer(8));
+
+  function bitsHex(x){
+    dv.setFloat64(0, x, false);
+    const hi = dv.getUint32(0, false);
+    const lo = dv.getUint32(4, false);
+    return "0x" + hi.toString(16).padStart(8, "0") + lo.toString(16).padStart(8, "0");
+  }
+
+  function toOrderedInt64(x){
+    dv.setFloat64(0, x, false);
+    const hi = BigInt(dv.getUint32(0, false));
+    const lo = BigInt(dv.getUint32(4, false));
+    let u = (hi << 32n) | lo; // unsigned 64-bit pattern
+    // Map to monotonic ordering: flip sign bit mapping for negatives.
+    // Common trick: if sign bit set, invert all bits; else set sign bit.
+    const sign = (u >> 63n) & 1n;
+    if (sign === 1n) u = ~u;
+    else u = u | (1n << 63n);
+    return u;
+  }
+
+  function ulpDistance(a, b){
+    if (Number.isNaN(a) || Number.isNaN(b)) return null;
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    const ia = toOrderedInt64(a);
+    const ib = toOrderedInt64(b);
+    return ia >= ib ? (ia - ib) : (ib - ia);
+  }
+
+  function fmt(x){
+    if (Number.isNaN(x)) return "NaN";
+    if (x === Infinity) return "Infinity";
+    if (x === -Infinity) return "-Infinity";
+    // show both short and a few sig figs
+    const s1 = x.toString();
+    const s2 = x.toPrecision(17);
+    return (s1 === s2) ? s2 : `${s1}  (≈ ${s2})`;
+  }
+
+  function computeSeries(seriesExpr, x){
+    // interpret seriesExpr with ^ allowed and same function set; but recommend plain polynomial in x.
+    const f = compileExpr(seriesExpr);
+    return f(x);
+  }
+
+  function chooseReference(mode, naive, stable, series, hasStable, hasSeries){
+    if (mode === "naive") return naive;
+    if (mode === "stable") return hasStable ? stable : NaN;
+    if (mode === "series") return hasSeries ? series : NaN;
+    // auto
+    if (hasStable) return stable;
+    if (hasSeries) return series;
+    return naive;
+  }
+
+  function setFlags(list){
+    flags.innerHTML = "";
+    for (const item of list){
+      const span = document.createElement("span");
+      span.className = "pill " + (item.kind || "");
+      span.textContent = item.text;
+      flags.appendChild(span);
+    }
+  }
+
+  // Debounce recompute
+  let tmr = null;
+  function schedule(){
+    if (tmr) clearTimeout(tmr);
+    tmr = setTimeout(recompute, 40);
+  }
+
+  function recompute(){
+    const x = safeNumberFromText(xval.value);
+    const mode = modeSel.value;
+
+    const fList = [];
+    if (!Number.isFinite(x)) fList.push({ text: "x is not finite", kind: "bad" });
+
+    let naive = NaN, stable = NaN, series = NaN;
+    let hasStable = stableTA.value.trim() !== "";
+    let hasSeries = seriesTA.value.trim() !== "";
+
+    // Evaluate
+    try {
+      const fN = compileExpr(exprTA.value.trim());
+      naive = fN(x);
+    } catch (e) {
+      fList.push({ text: "Naive: " + e.message, kind: "bad" });
+    }
+
+    if (hasStable) {
+      try {
+        const fS = compileExpr(stableTA.value.trim());
+        stable = fS(x);
+      } catch (e) {
+        fList.push({ text: "Stable: " + e.message, kind: "bad" });
+        hasStable = false;
+      }
+    }
+
+    if (hasSeries) {
+      try {
+        series = computeSeries(seriesTA.value.trim(), x);
+      } catch (e) {
+        fList.push({ text: "Series: " + e.message, kind: "bad" });
+        hasSeries = false;
+      }
+    }
+
+    const ref = chooseReference(mode, naive, stable, series, hasStable, hasSeries);
+
+    // Warnings / heuristics
+    const ulpNS = (hasStable ? ulpDistance(naive, stable) : null);
+    const ulpNR = ulpDistance(naive, ref);
+
+    if (ulpNR !== null) {
+      if (ulpNR === 0n) fList.push({ text: "Naive matches reference (0 ulp)", kind: "ok" });
+      else if (ulpNR <= 4n) fList.push({ text: `Naive close to reference (${ulpNR} ulp)`, kind: "ok" });
+      else if (ulpNR > 1_000_000n) fList.push({ text: `Severe mismatch (${ulpNR} ulp)`, kind: "bad" });
+      else if (ulpNR > 10_000n) fList.push({ text: `Large mismatch (${ulpNR} ulp)`, kind: "bad" });
+      else fList.push({ text: `Mismatch: ${ulpNR} ulp`, kind: "" });
+    }
+
+    // cancellation hint: if naive uses subtraction and result is tiny relative to terms, we can't robustly detect,
+    // but we can flag known patterns by ULP blow-up vs stable/series.
+    if (ulpNS !== null && ulpNS > 1000n) {
+      fList.push({ text: "Likely cancellation / ill-conditioned evaluation", kind: "bad" });
+    }
+
+    setFlags(fList.length ? fList : [{ text: "OK", kind: "ok" }]);
+
+    outNaive.textContent = fmt(naive);
+    outStable.textContent = hasStable ? fmt(stable) : "—";
+    outSeries.textContent = hasSeries ? fmt(series) : "—";
+    outRef.textContent = fmt(ref);
+
+    // Error metrics
+    const absErr = (Number.isFinite(naive) && Number.isFinite(ref)) ? (naive - ref) : NaN;
+    const relErr = (Number.isFinite(absErr) && Number.isFinite(ref) && ref !== 0) ? (absErr / ref) : NaN;
+
+    const ulp = ulpNR;
+    const ulpStr = (ulp === null) ? "—" : ulp.toString() + " ulp";
+
+    errBox.textContent =
+      `abs error   = ${fmt(absErr)}\n` +
+      `rel error   = ${fmt(relErr)}\n` +
+      `ULP distance= ${ulpStr}\n`;
+
+    // Bits
+    bitsBox.textContent =
+      `x      = ${fmt(x)}\n` +
+      `x bits = ${bitsHex(x)}\n\n` +
+      `naive bits  = ${bitsHex(naive)}\n` +
+      `ref bits    = ${bitsHex(ref)}\n` +
+      (hasStable ? `stable bits = ${bitsHex(stable)}\n` : "") +
+      (hasSeries ? `series bits = ${bitsHex(series)}\n` : "");
+  }
+
+  // UI wiring
+  presetSel.addEventListener("change", () => setPreset(Number(presetSel.value)));
+  for (const el of [xval, modeSel, exprTA, stableTA, seriesTA]) {
+    el.addEventListener("input", schedule);
+    el.addEventListener("change", schedule);
+  }
+
+  $("btnSmall").addEventListener("click", () => { xval.value = "1e-16"; recompute(); });
+  $("btnMed").addEventListener("click", () => { xval.value = "1e-8"; recompute(); });
+  $("btnBig").addEventListener("click", () => { xval.value = "1e-2"; recompute(); });
+
+  // init
+  presetSel.value = "0";
+  setPreset(0);
+})();
+</script>
+</body>
+</html>
